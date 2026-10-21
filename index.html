@@ -15,6 +15,7 @@
     #brand { position: absolute; top: 18px; left: 20px; font-weight: 800; letter-spacing: .06em; font-size: 14px; opacity: .92; }
     #brand small { display: block; font-weight: 500; letter-spacing: 0; opacity: .75; margin-top: 3px; }
     #help { position: absolute; top: 18px; right: 20px; text-align: right; font-size: 12px; line-height: 1.55; opacity: .86; }
+    #networkHud { position: absolute; top: 78px; right: 20px; max-width: min(330px, calc(100vw - 40px)); padding: 6px 9px; border: 1px solid rgba(255,255,255,.2); border-radius: 5px; background: rgba(11,16,22,.62); color: #f0c674; font-size: 11px; line-height: 1.35; text-align: right; text-shadow: 1px 1px 2px #000; }
     #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%,-50%); }
     #crosshair:before, #crosshair:after { content:""; position:absolute; background:#fff; box-shadow: 0 0 2px #000; }
     #crosshair:before { width: 2px; height: 18px; left: 8px; } #crosshair:after { height: 2px; width: 18px; top: 8px; }
@@ -75,7 +76,7 @@
   <canvas id="game"></canvas><canvas id="glgame"></canvas>
   <div id="hud">
     <div id="brand">AARONAD-CRAFT 26.3<small>voxel sandbox prototype</small></div>
-    <div id="help">WASD move · mouse look · <b>Space</b> jump · <b>C</b> kitchen<br>Break blocks to gather · Right click place · 1–6 select</div>
+    <div id="help">WASD move · mouse look · <b>Space</b> jump · <b>C</b> kitchen<br>Break blocks to gather · Right click place · 1–6 select</div><div id="networkHud" style="display:none"></div>
     <div id="remotePlayers"></div>
     <div id="crosshair"></div><div id="hearts" aria-label="Health: 10 hearts">♥♥♥♥♥♥♥♥♥♥</div><div id="vitals">Hunger 100 · Water 100 · Nutrition 100</div><div id="status"></div><div id="hotbar"></div>
   </div>
@@ -97,7 +98,7 @@
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script>
 (() => {
-  const canvas = document.querySelector('#game'), ctx = canvas.getContext('2d'), glCanvas = document.querySelector('#glgame'), start = document.querySelector('#start'), hotbar = document.querySelector('#hotbar'), status = document.querySelector('#status'), death = document.querySelector('#death'), hearts = document.querySelector('#hearts'), vitals = document.querySelector('#vitals'), commandInput = document.querySelector('#command'), kitchen = document.querySelector('#kitchen'), pantryEl = document.querySelector('#pantry'), selectedEl = document.querySelector('#selectedIngredients'), methodsEl = document.querySelector('#methods'), mealsEl = document.querySelector('#meals'), kitchenNotice = document.querySelector('#kitchenNotice'), playerNameInput = document.querySelector('#playerName'), roomCodeInput = document.querySelector('#roomCode'), hostRoomButton = document.querySelector('#hostRoom'), joinRoomButton = document.querySelector('#joinRoom'), networkStatus = document.querySelector('#networkStatus'), remotePlayersEl = document.querySelector('#remotePlayers');
+  const canvas = document.querySelector('#game'), ctx = canvas.getContext('2d'), glCanvas = document.querySelector('#glgame'), start = document.querySelector('#start'), hotbar = document.querySelector('#hotbar'), status = document.querySelector('#status'), death = document.querySelector('#death'), hearts = document.querySelector('#hearts'), vitals = document.querySelector('#vitals'), commandInput = document.querySelector('#command'), kitchen = document.querySelector('#kitchen'), pantryEl = document.querySelector('#pantry'), selectedEl = document.querySelector('#selectedIngredients'), methodsEl = document.querySelector('#methods'), mealsEl = document.querySelector('#meals'), kitchenNotice = document.querySelector('#kitchenNotice'), playerNameInput = document.querySelector('#playerName'), roomCodeInput = document.querySelector('#roomCode'), hostRoomButton = document.querySelector('#hostRoom'), joinRoomButton = document.querySelector('#joinRoom'), networkStatus = document.querySelector('#networkStatus'), networkHud = document.querySelector('#networkHud'), remotePlayersEl = document.querySelector('#remotePlayers');
   const W=30,H=14,D=30,textureCache=new Map();
   class BlockType{constructor(id,name,color,shape='cube'){this.id=id;this.name=name;this.color=color;this.shape=shape;this.atlasRow=id-1;}}
   const blockTypes=[null,new BlockType(1,'grass','#62a94f'),new BlockType(2,'dirt','#8a5a35'),new BlockType(3,'stone','#868b8c'),new BlockType(4,'wood','#9a6a3b'),new BlockType(5,'sand','#d6bd72'),new BlockType(6,'stick','#b47b43','stick')];
@@ -143,7 +144,7 @@
   function fullCube(x,y,z){let id=solid(x,y,z);return !!id&&blockTypes[id].shape==='cube';}
   function save(){localStorage.setItem('eaglercraftx-world',JSON.stringify(world));}
   const remotePlayerElements=new Map();
-  function setNetworkStatus(message){networkStatus.textContent=message;}
+  function setNetworkStatus(message){networkStatus.textContent=message;networkHud.textContent=networkMode==='solo'?'':message;networkHud.style.display=networkMode==='solo'?'none':'block';}
   function readPlayerName(){playerName=(playerNameInput.value.trim()||'Player').slice(0,16);playerNameInput.value=playerName;return playerName;}
   function beginGame(){start.style.display='none';glCanvas.requestPointerLock();}
   function validNetworkCell(x,y,z){return Number.isInteger(x)&&Number.isInteger(y)&&Number.isInteger(z)&&x>=0&&x<W&&y>=0&&y<H&&z>=0&&z<D;}
@@ -183,7 +184,7 @@
     if(!window.Peer){setNetworkStatus('Multiplayer could not load. Open the GitHub Pages URL with internet access.');return;}
     peer=requestedId?new Peer(requestedId):new Peer();peer.on('open',onOpen);peer.on('connection',connection=>{if(networkMode==='host')wireNetworkConnection(connection,true);});peer.on('error',error=>{if(error.type==='unavailable-id'&&networkMode==='host'){peer.destroy();peer=null;startPeer(onOpen,makeRoomCode());return;}setNetworkStatus(`Multiplayer error: ${error.type||'connection failed'}`);});peer.on('disconnected',()=>setNetworkStatus('Multiplayer signaling disconnected. Refresh to reconnect.'));
   }
-  function createRoom(){if(peer)return;playerName=readPlayerName();networkMode='host';networkReady=true;hostRoomButton.disabled=true;joinRoomButton.disabled=true;startPeer(id=>{roomCodeInput.value=id;roomCodeInput.readOnly=true;setNetworkStatus(`Room code: ${id} — share it, then click Single player to enter.`);},makeRoomCode());}
+  function createRoom(){if(peer)return;playerName=readPlayerName();networkMode='host';networkReady=true;hostRoomButton.disabled=true;joinRoomButton.disabled=true;beginGame();startPeer(id=>{roomCodeInput.value=id;roomCodeInput.readOnly=true;try{navigator.clipboard?.writeText(id);}catch{}setNetworkStatus(`Room code: ${id} — share this code with other players.`);},makeRoomCode());}
   function joinRoom(){if(peer)return;let code=roomCodeInput.value.trim().toUpperCase();roomCodeInput.value=code;if(!code){setNetworkStatus('Enter a room code first.');return;}playerName=readPlayerName();networkMode='client';networkReady=false;hostRoomButton.disabled=true;joinRoomButton.disabled=true;startPeer(()=>{hostConnection=peer.connect(code,{reliable:true});wireNetworkConnection(hostConnection,false);});}
   function networkTick(dt){if(!peer||!networkReady)return;networkClock+=dt;if(networkClock<.1)return;networkClock=0;let message={type:'player',name:playerName,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch};if(networkMode==='host')broadcastNetwork(message);else sendNetwork(hostConnection,message);}
   function renderRemotePlayers(){for(let [id,player] of remotePlayers){let element=remotePlayerElements.get(id);if(!element){element=document.createElement('div');element.className='remote-player';remotePlayerElements.set(id,element);remotePlayersEl.append(element);}let screen=project(player.x,player.y,player.z);if(!screen||screen.d<=.1||screen.d>32){element.style.display='none';continue;}element.style.display='block';element.style.left=`${screen.x}px`;element.style.top=`${screen.y}px`;element.textContent=player.name;}for(let [id,element] of remotePlayerElements)if(!remotePlayers.has(id)){element.remove();remotePlayerElements.delete(id);}}
