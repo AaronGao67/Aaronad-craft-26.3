@@ -59,6 +59,15 @@
     h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: .04em; } .card p { opacity: .78; margin: 8px 0 20px; }
     button { padding: 12px 22px; border: 0; border-radius: 5px; background: #4d9b54; color: white; font: inherit; font-weight: 700; cursor: pointer; } button:hover { background: #61b968; }
     kbd { padding: 2px 5px; border: 1px solid #777; border-bottom-width: 2px; border-radius: 3px; background: #252d35; font-size: 11px; }
+    .network-panel { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.16); text-align: left; }
+    .network-panel strong { display: block; margin-bottom: 8px; font-size: 13px; }
+    .network-panel input { width: 100%; margin-bottom: 8px; padding: 10px; border: 1px solid rgba(255,255,255,.22); border-radius: 5px; background: rgba(0,0,0,.28); color: white; font: inherit; outline: none; }
+    .network-row { display: flex; gap: 8px; }
+    .network-row button { flex: 1; padding: 10px 8px; font-size: 13px; }
+    #networkStatus { display: block; min-height: 18px; margin-top: 9px; color: #f0c674; font-size: 11px; line-height: 1.4; }
+    #remotePlayers { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+    .remote-player { position: absolute; transform: translate(-50%, -100%); padding: 3px 6px; border-radius: 4px; background: rgba(22,34,45,.82); border: 1px solid rgba(150,220,255,.7); color: #d9f3ff; font-size: 11px; white-space: nowrap; text-shadow: 1px 1px 1px #000; }
+    .remote-player::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 8px; height: 8px; transform: translateX(-50%) rotate(45deg); background: #53b8dc; border-right: 1px solid rgba(150,220,255,.7); border-bottom: 1px solid rgba(150,220,255,.7); }
   </style>
 </head>
 <body>
@@ -66,6 +75,7 @@
   <div id="hud">
     <div id="brand">AARONAD-CRAFT 26.3<small>voxel sandbox prototype</small></div>
     <div id="help">WASD move · mouse look · <b>Space</b> jump · <b>C</b> kitchen<br>Break blocks to gather · Right click place · 1–6 select</div>
+    <div id="remotePlayers"></div>
     <div id="crosshair"></div><div id="hearts" aria-label="Health: 10 hearts">♥♥♥♥♥♥♥♥♥♥</div><div id="vitals">Hunger 100 · Water 100 · Nutrition 100</div><div id="status"></div><div id="hotbar"></div>
   </div>
   <div id="death">YOU DIED</div>
@@ -82,10 +92,11 @@
       <section class="kitchen-section" style="margin-top:18px"><h3>Prepared food</h3><div class="meal-list" id="meals"></div></section>
     </div>
   </div>
-  <div id="start"><div class="card"><h1>Aaronad-craft 26.3</h1><p>A tiny original voxel sandbox running entirely in your browser.</p><button id="play">Click to play</button><p style="font-size:12px;margin:16px 0 0">No downloads. Your world is saved locally.</p></div></div>
+  <div id="start"><div class="card"><h1>Aaronad-craft 26.3</h1><p>A tiny original voxel sandbox running entirely in your browser.</p><button id="play">Single player</button><div class="network-panel"><strong>Multiplayer</strong><input id="playerName" maxlength="16" value="Player" aria-label="Player name" placeholder="Player name"><div class="network-row"><button id="hostRoom" type="button">Create room</button><button id="joinRoom" type="button">Join room</button></div><input id="roomCode" maxlength="64" aria-label="Room code" placeholder="Paste host room code"><small id="networkStatus">Create a room or join one. Multiplayer works on the GitHub Pages version.</small></div><p style="font-size:12px;margin:16px 0 0">No downloads. Your world is saved locally.</p></div></div>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script>
 (() => {
-  const canvas = document.querySelector('#game'), ctx = canvas.getContext('2d'), glCanvas = document.querySelector('#glgame'), start = document.querySelector('#start'), hotbar = document.querySelector('#hotbar'), status = document.querySelector('#status'), death = document.querySelector('#death'), hearts = document.querySelector('#hearts'), vitals = document.querySelector('#vitals'), commandInput = document.querySelector('#command'), kitchen = document.querySelector('#kitchen'), pantryEl = document.querySelector('#pantry'), selectedEl = document.querySelector('#selectedIngredients'), methodsEl = document.querySelector('#methods'), mealsEl = document.querySelector('#meals'), kitchenNotice = document.querySelector('#kitchenNotice');
+  const canvas = document.querySelector('#game'), ctx = canvas.getContext('2d'), glCanvas = document.querySelector('#glgame'), start = document.querySelector('#start'), hotbar = document.querySelector('#hotbar'), status = document.querySelector('#status'), death = document.querySelector('#death'), hearts = document.querySelector('#hearts'), vitals = document.querySelector('#vitals'), commandInput = document.querySelector('#command'), kitchen = document.querySelector('#kitchen'), pantryEl = document.querySelector('#pantry'), selectedEl = document.querySelector('#selectedIngredients'), methodsEl = document.querySelector('#methods'), mealsEl = document.querySelector('#meals'), kitchenNotice = document.querySelector('#kitchenNotice'), playerNameInput = document.querySelector('#playerName'), roomCodeInput = document.querySelector('#roomCode'), hostRoomButton = document.querySelector('#hostRoom'), joinRoomButton = document.querySelector('#joinRoom'), networkStatus = document.querySelector('#networkStatus'), remotePlayersEl = document.querySelector('#remotePlayers');
   const W=30,H=14,D=30,textureCache=new Map();
   class BlockType{constructor(id,name,color,shape='cube'){this.id=id;this.name=name;this.color=color;this.shape=shape;this.atlasRow=id-1;}}
   const blockTypes=[null,new BlockType(1,'grass','#62a94f'),new BlockType(2,'dirt','#8a5a35'),new BlockType(3,'stone','#868b8c'),new BlockType(4,'wood','#9a6a3b'),new BlockType(5,'sand','#d6bd72'),new BlockType(6,'stick','#b47b43','stick')];
@@ -93,6 +104,7 @@
   let world=JSON.parse(localStorage.getItem('eaglercraftx-world')||'null');
   if(!world){ world=Array.from({length:W},()=>Array.from({length:H},()=>Array(D).fill(0))); for(let x=0;x<W;x++)for(let z=0;z<D;z++){let h=3+Math.floor(1.5*Math.sin(x*.45)+1.2*Math.cos(z*.35)); h=Math.max(2,Math.min(6,h)); for(let y=0;y<=h;y++) world[x][y][z]=y===h?1:y>h-3?2:3; if((x-16)**2+(z-14)**2<18) for(let y=h+1;y<8;y++) world[x][y][z]=0; } for(let i=0;i<12;i++){let x=2+Math.random()*26|0,z=2+Math.random()*26|0,h=4+Math.random()*3|0; let ground=6; for(let y=ground;y<ground+h;y++)world[x][y][z]=4;} }
   const p={x:15.5,y:8,z:15.5, yaw:0,pitch:0,vy:0,onGround:false}; let selected=1, locked=false, keys={},deadUntil=0,health=10,hunger=100,hydration=100,nutrition=100,flying=false,commandMode=false,breaking=false,breakTimer=0,breakTarget=null,kitchenOpen=false,selectedIngredients=[],selectedMethod='raw',cookingNotice='',mealRenderClock=0,pickupMessage='',pickupTimer=0; const BREAK_TIME=3;
+  let peer=null,networkMode='solo',hostConnection=null,networkConnections=new Map(),remotePlayers=new Map(),networkClock=0,networkReady=false,playerName='Player';
   const ingredientInfo={
     apple:{name:'Apple',group:'fruit',color:'#d96850',calories:95,water:86,protein:0.5,vitamins:8,flavor:{sweet:8,sour:2}},
     carrot:{name:'Carrot',group:'vegetable',color:'#e68a38',calories:25,water:88,protein:0.6,vitamins:12,flavor:{sweet:5,bitter:1}},
@@ -129,6 +141,51 @@
   // an artificial see-through hole.
   function fullCube(x,y,z){let id=solid(x,y,z);return !!id&&blockTypes[id].shape==='cube';}
   function save(){localStorage.setItem('eaglercraftx-world',JSON.stringify(world));}
+  const remotePlayerElements=new Map();
+  function setNetworkStatus(message){networkStatus.textContent=message;}
+  function readPlayerName(){playerName=(playerNameInput.value.trim()||'Player').slice(0,16);playerNameInput.value=playerName;return playerName;}
+  function beginGame(){start.style.display='none';glCanvas.requestPointerLock();}
+  function validNetworkCell(x,y,z){return Number.isInteger(x)&&Number.isInteger(y)&&Number.isInteger(z)&&x>=0&&x<W&&y>=0&&y<H&&z>=0&&z<D;}
+  function sendNetwork(connection,message){if(connection&&connection.open)connection.send(message);}
+  function broadcastNetwork(message,exceptPeer){for(let [id,connection] of networkConnections)if(id!==exceptPeer)sendNetwork(connection,message);}
+  function broadcastBlockChange(x,y,z,value){let message={type:'block',x,y,z,value};if(networkMode==='host')broadcastNetwork(message);else sendNetwork(hostConnection,message);}
+  function applyNetworkBlock(message){if(!validNetworkCell(message.x,message.y,message.z)||![0,1,2,3,4,5,6].includes(message.value))return;world[message.x][message.y][message.z]=message.value;save();}
+  function handleNetworkMessage(connection,message){
+    if(!message||typeof message.type!=='string')return;
+    if(networkMode==='host'){
+      if(message.type==='hello'){
+        remotePlayers.set(connection.peer,{id:connection.peer,name:String(message.name||'Player').slice(0,16),x:15.5,y:8,z:15.5});
+        sendNetwork(connection,{type:'world',world});
+        for(let player of remotePlayers.values())if(player.id!==connection.peer)sendNetwork(connection,{type:'player',...player});
+        broadcastNetwork({type:'player',id:connection.peer,name:String(message.name||'Player').slice(0,16),x:15.5,y:8,z:15.5},connection.peer);
+      }else if(message.type==='player'){
+        let player=remotePlayers.get(connection.peer)||{id:connection.peer,name:'Player'};Object.assign(player,{x:Number(message.x)||0,y:Number(message.y)||0,z:Number(message.z)||0,yaw:Number(message.yaw)||0,pitch:Number(message.pitch)||0});remotePlayers.set(connection.peer,player);broadcastNetwork({...message,type:'player',id:connection.peer},connection.peer);
+      }else if(message.type==='block'&&validNetworkCell(message.x,message.y,message.z)&&[0,1,2,3,4,5,6].includes(message.value)){
+        applyNetworkBlock(message);broadcastNetwork(message);
+      }
+      return;
+    }
+    if(message.type==='world'&&Array.isArray(message.world)){
+      world=message.world;save();networkReady=true;setNetworkStatus(`Connected as ${playerName}. Room: ${roomCodeInput.value.trim()}`);beginGame();
+    }else if(message.type==='player'&&message.id){remotePlayers.set(message.id,{id:message.id,name:String(message.name||'Player').slice(0,16),x:Number(message.x)||0,y:Number(message.y)||0,z:Number(message.z)||0,yaw:Number(message.yaw)||0,pitch:Number(message.pitch)||0});
+    }else if(message.type==='playerLeft'&&message.id){remotePlayers.delete(message.id);}
+    else if(message.type==='block')applyNetworkBlock(message);
+  }
+  function wireNetworkConnection(connection,isHostSide){
+    connection.on('open',()=>{if(isHostSide){networkConnections.set(connection.peer,connection);setNetworkStatus(`${networkConnections.size} player${networkConnections.size===1?'':'s'} connected. Room: ${peer.id}`);}else{hostConnection=connection;sendNetwork(hostConnection,{type:'hello',name:playerName});setNetworkStatus('Connected. Waiting for the host world…');}});
+    connection.on('data',message=>handleNetworkMessage(connection,message));
+    connection.on('close',()=>{if(isHostSide){networkConnections.delete(connection.peer);remotePlayers.delete(connection.peer);broadcastNetwork({type:'playerLeft',id:connection.peer});setNetworkStatus(`${networkConnections.size} player${networkConnections.size===1?'':'s'} connected. Room: ${peer.id}`);}else{hostConnection=null;networkReady=false;setNetworkStatus('Host disconnected. You can keep playing locally.');}});
+    connection.on('error',()=>setNetworkStatus('The multiplayer connection encountered an error.'));
+  }
+  function startPeer(onOpen){
+    if(!window.Peer){setNetworkStatus('Multiplayer could not load. Open the GitHub Pages URL with internet access.');return;}
+    peer=new Peer();peer.on('open',onOpen);peer.on('connection',connection=>{if(networkMode==='host')wireNetworkConnection(connection,true);});peer.on('error',error=>setNetworkStatus(`Multiplayer error: ${error.type||'connection failed'}`));peer.on('disconnected',()=>setNetworkStatus('Multiplayer signaling disconnected. Refresh to reconnect.'));
+  }
+  function createRoom(){if(peer)return;playerName=readPlayerName();networkMode='host';networkReady=true;hostRoomButton.disabled=true;joinRoomButton.disabled=true;startPeer(id=>{roomCodeInput.value=id;roomCodeInput.readOnly=true;setNetworkStatus(`Room code: ${id} — share it, then click Single player to enter.`);});}
+  function joinRoom(){if(peer)return;let code=roomCodeInput.value.trim();if(!code){setNetworkStatus('Enter a room code first.');return;}playerName=readPlayerName();networkMode='client';networkReady=false;hostRoomButton.disabled=true;joinRoomButton.disabled=true;startPeer(()=>{hostConnection=peer.connect(code,{reliable:true});wireNetworkConnection(hostConnection,false);});}
+  function networkTick(dt){if(!peer||!networkReady)return;networkClock+=dt;if(networkClock<.1)return;networkClock=0;let message={type:'player',name:playerName,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch};if(networkMode==='host')broadcastNetwork(message);else sendNetwork(hostConnection,message);}
+  function renderRemotePlayers(){for(let [id,player] of remotePlayers){let element=remotePlayerElements.get(id);if(!element){element=document.createElement('div');element.className='remote-player';remotePlayerElements.set(id,element);remotePlayersEl.append(element);}let screen=project(player.x,player.y,player.z);if(!screen||screen.d<=.1||screen.d>32){element.style.display='none';continue;}element.style.display='block';element.style.left=`${screen.x}px`;element.style.top=`${screen.y}px`;element.textContent=player.name;}for(let [id,element] of remotePlayerElements)if(!remotePlayers.has(id)){element.remove();remotePlayerElements.delete(id);}}
+  hostRoomButton.onclick=createRoom;joinRoomButton.onclick=joinRoom;
   function rebuildAtlas(){if(!gl)return;let atlas=document.createElement('canvas');atlas.width=16;atlas.height=96;let ac=atlas.getContext('2d');for(let i=0;i<6;i++){let block=blockTypes[i+1];ac.drawImage(textureTile(block.color),0,(5-i)*16);}gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,glTexture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,atlas);}
   setTimeout(rebuildAtlas,0);
   const PLAYER_RADIUS=.28,PLAYER_HEIGHT=1.8,EYE_HEIGHT=1.65,SPAWN_X=15.5,SPAWN_Z=15.5;
@@ -162,8 +219,8 @@
   function shade(hex,m){let n=parseInt(hex.slice(1),16),r=Math.max(0,Math.min(255,(n>>16)*m)),g=Math.max(0,Math.min(255,((n>>8)&255)*m)),b=Math.max(0,Math.min(255,(n&255)*m));return `rgb(${r},${g},${b})`;}
   function target(){let step=.12,last=null;for(let d=.5;d<7;d+=step){let x=Math.floor(p.x+Math.sin(p.yaw)*Math.cos(p.pitch)*d),y=Math.floor(p.y+Math.sin(p.pitch)*d),z=Math.floor(p.z+Math.cos(p.yaw)*Math.cos(p.pitch)*d);if(x<0||x>=W||y<0||y>=H||z<0||z>=D)continue;if(solid(x,y,z))return last?{x,y,z,place:last}:{x,y,z,place:null};last={x,y,z};}return null;}
   commandInput.addEventListener('keydown',e=>{if(e.code==='Enter'){e.preventDefault();runCommand();}else if(e.code==='Escape'){e.preventDefault();commandInput.value='';closeCommand();}});addEventListener('keydown',e=>{if(commandMode)return;if(e.code==='KeyC'&&start.style.display==='none'){e.preventDefault();setKitchenOpen(!kitchenOpen);return;}if(kitchenOpen){if(e.code==='Escape')setKitchenOpen(false);return;}if(e.code==='Slash'&&locked){e.preventDefault();commandMode=true;commandInput.value='/';commandInput.style.display='block';document.exitPointerLock();commandInput.focus();return;}keys[e.code]=true;if(e.code.startsWith('Digit'))select(+e.code.slice(5));if(e.code==='Space'&&p.onGround&&!flying)p.vy=7;if(['Space','KeyW','KeyA','KeyS','KeyD'].includes(e.code))e.preventDefault();});addEventListener('keyup',e=>{if(!commandMode&&!kitchenOpen)keys[e.code]=false;});
-  glCanvas.addEventListener('mousedown',e=>{if(!locked)return;let t=target();if(!t)return;if(e.button===0){breakTarget={x:t.x,y:t.y,z:t.z};breaking=true;breakTimer=0;}if(e.button===2&&t.place){let {x,y,z}=t.place;if(!solid(x,y,z)&&!playerOverlapsBlock(x,y,z))world[x][y][z]=selected;save();}});glCanvas.oncontextmenu=e=>e.preventDefault();
-  document.querySelector('#play').onclick=()=>{start.style.display='none';glCanvas.requestPointerLock();};document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===glCanvas;if(!locked){p.yaw%=Math.PI*2;}});document.addEventListener('mousemove',e=>{if(locked){let dx=Math.max(-80,Math.min(80,e.movementX||0)),dy=Math.max(-80,Math.min(80,e.movementY||0));p.yaw=(p.yaw-dx*.0025)%(Math.PI*2);p.pitch=Math.max(-1.56,Math.min(1.56,p.pitch-dy*.0025));}});
-  initGL();let last=performance.now();function loop(now){let dt=Math.min(.05,(now-last)/1000);last=now;updateMeals(dt);updateVitals(dt);pickupTimer=Math.max(0,pickupTimer-dt);if(locked){move(dt);if(breaking){let t=target(),sameTarget=!!(t&&breakTarget&&t.x===breakTarget.x&&t.y===breakTarget.y&&t.z===breakTarget.z),requiredBreakTime=flying?0:BREAK_TIME;if(sameTarget){breakTimer+=dt;if(breakTimer>=requiredBreakTime){collectFromBlock(world[t.x][t.y][t.z]);world[t.x][t.y][t.z]=0;save();breaking=false;breakTimer=0;breakTarget=null;}}else{breaking=false;breakTimer=0;breakTarget=null;}}}drawGL();status.textContent=deadUntil?'Respawning…':pickupTimer>0?pickupMessage:breaking?`Breaking ${Math.ceil(Math.max(0,(flying?0:BREAK_TIME)-breakTimer))}s`:`Position ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}  ·  ${types[selected]}${flying?' · FLY':''}`;requestAnimationFrame(loop);}requestAnimationFrame(loop);
+  glCanvas.addEventListener('mousedown',e=>{if(!locked)return;let t=target();if(!t)return;if(e.button===0){breakTarget={x:t.x,y:t.y,z:t.z};breaking=true;breakTimer=0;}if(e.button===2&&t.place){let {x,y,z}=t.place;if(!solid(x,y,z)&&!playerOverlapsBlock(x,y,z)){world[x][y][z]=selected;save();broadcastBlockChange(x,y,z,selected);}}});glCanvas.oncontextmenu=e=>e.preventDefault();
+  document.querySelector('#play').onclick=beginGame;document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===glCanvas;if(!locked){p.yaw%=Math.PI*2;}});document.addEventListener('mousemove',e=>{if(locked){let dx=Math.max(-80,Math.min(80,e.movementX||0)),dy=Math.max(-80,Math.min(80,e.movementY||0));p.yaw=(p.yaw-dx*.0025)%(Math.PI*2);p.pitch=Math.max(-1.56,Math.min(1.56,p.pitch-dy*.0025));}});
+  initGL();let last=performance.now();function loop(now){let dt=Math.min(.05,(now-last)/1000);last=now;updateMeals(dt);updateVitals(dt);pickupTimer=Math.max(0,pickupTimer-dt);if(locked){move(dt);if(breaking){let t=target(),sameTarget=!!(t&&breakTarget&&t.x===breakTarget.x&&t.y===breakTarget.y&&t.z===breakTarget.z),requiredBreakTime=flying?0:BREAK_TIME;if(sameTarget){breakTimer+=dt;if(breakTimer>=requiredBreakTime){collectFromBlock(world[t.x][t.y][t.z]);world[t.x][t.y][t.z]=0;save();broadcastBlockChange(t.x,t.y,t.z,0);breaking=false;breakTimer=0;breakTarget=null;}}else{breaking=false;breakTimer=0;breakTarget=null;}}}networkTick(dt);drawGL();renderRemotePlayers();status.textContent=deadUntil?'Respawning…':pickupTimer>0?pickupMessage:breaking?`Breaking ${Math.ceil(Math.max(0,(flying?0:BREAK_TIME)-breakTimer))}s`:`Position ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}  ·  ${types[selected]}${flying?' · FLY':''}${networkMode!=='solo'?' · ONLINE':''}`;requestAnimationFrame(loop);}requestAnimationFrame(loop);
 })();
 </script></body></html>
