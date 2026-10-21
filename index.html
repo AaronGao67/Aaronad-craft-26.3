@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Aaronad Craft — Voxel Sandbox</title>
+  <title>Aaronad-craft 26.3 — Voxel Sandbox</title>
   <style>
     :root { --panel: rgba(11, 16, 22, .78); --line: rgba(255,255,255,.18); }
     * { box-sizing: border-box; }
@@ -64,7 +64,7 @@
 <body>
   <canvas id="game"></canvas><canvas id="glgame"></canvas>
   <div id="hud">
-    <div id="brand">AARONAD CRAFT<small>voxel sandbox prototype</small></div>
+    <div id="brand">AARONAD-CRAFT 26.3<small>voxel sandbox prototype</small></div>
     <div id="help">WASD move · mouse look · <b>Space</b> jump · <b>C</b> kitchen<br>Break blocks to gather · Right click place · 1–6 select</div>
     <div id="crosshair"></div><div id="hearts" aria-label="Health: 10 hearts">♥♥♥♥♥♥♥♥♥♥</div><div id="vitals">Hunger 100 · Water 100 · Nutrition 100</div><div id="status"></div><div id="hotbar"></div>
   </div>
@@ -82,7 +82,7 @@
       <section class="kitchen-section" style="margin-top:18px"><h3>Prepared food</h3><div class="meal-list" id="meals"></div></section>
     </div>
   </div>
-  <div id="start"><div class="card"><h1>Aaronad Craft</h1><p>A tiny original voxel sandbox running entirely in your browser.</p><button id="play">Click to play</button><p style="font-size:12px;margin:16px 0 0">No downloads. Your world is saved locally.</p></div></div>
+  <div id="start"><div class="card"><h1>Aaronad-craft 26.3</h1><p>A tiny original voxel sandbox running entirely in your browser.</p><button id="play">Click to play</button><p style="font-size:12px;margin:16px 0 0">No downloads. Your world is saved locally.</p></div></div>
 <script>
 (() => {
   const canvas = document.querySelector('#game'), ctx = canvas.getContext('2d'), glCanvas = document.querySelector('#glgame'), start = document.querySelector('#start'), hotbar = document.querySelector('#hotbar'), status = document.querySelector('#status'), death = document.querySelector('#death'), hearts = document.querySelector('#hearts'), vitals = document.querySelector('#vitals'), commandInput = document.querySelector('#command'), kitchen = document.querySelector('#kitchen'), pantryEl = document.querySelector('#pantry'), selectedEl = document.querySelector('#selectedIngredients'), methodsEl = document.querySelector('#methods'), mealsEl = document.querySelector('#meals'), kitchenNotice = document.querySelector('#kitchenNotice');
