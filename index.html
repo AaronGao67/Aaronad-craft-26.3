@@ -62,6 +62,7 @@
     .network-panel { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.16); text-align: left; }
     .network-panel strong { display: block; margin-bottom: 8px; font-size: 13px; }
     .network-panel input { width: 100%; margin-bottom: 8px; padding: 10px; border: 1px solid rgba(255,255,255,.22); border-radius: 5px; background: rgba(0,0,0,.28); color: white; font: inherit; outline: none; }
+    #roomCode { text-transform: uppercase; letter-spacing: .16em; }
     .network-row { display: flex; gap: 8px; }
     .network-row button { flex: 1; padding: 10px 8px; font-size: 13px; }
     #networkStatus { display: block; min-height: 18px; margin-top: 9px; color: #f0c674; font-size: 11px; line-height: 1.4; }
@@ -92,7 +93,7 @@
       <section class="kitchen-section" style="margin-top:18px"><h3>Prepared food</h3><div class="meal-list" id="meals"></div></section>
     </div>
   </div>
-  <div id="start"><div class="card"><h1>Aaronad-craft 26.3</h1><p>A tiny original voxel sandbox running entirely in your browser.</p><button id="play">Single player</button><div class="network-panel"><strong>Multiplayer</strong><input id="playerName" maxlength="16" value="Player" aria-label="Player name" placeholder="Player name"><div class="network-row"><button id="hostRoom" type="button">Create room</button><button id="joinRoom" type="button">Join room</button></div><input id="roomCode" maxlength="64" aria-label="Room code" placeholder="Paste host room code"><small id="networkStatus">Create a room or join one. Multiplayer works on the GitHub Pages version.</small></div><p style="font-size:12px;margin:16px 0 0">No downloads. Your world is saved locally.</p></div></div>
+  <div id="start"><div class="card"><h1>Aaronad-craft 26.3</h1><p>A tiny original voxel sandbox running entirely in your browser.</p><button id="play">Single player</button><div class="network-panel"><strong>Multiplayer</strong><input id="playerName" maxlength="16" value="Player" aria-label="Player name" placeholder="Player name"><div class="network-row"><button id="hostRoom" type="button">Create room</button><button id="joinRoom" type="button">Join room</button></div><input id="roomCode" maxlength="6" minlength="6" aria-label="Room code" placeholder="6-letter room code" autocomplete="off" autocapitalize="characters"><small id="networkStatus">Create a room or join one. Multiplayer works on the GitHub Pages version.</small></div><p style="font-size:12px;margin:16px 0 0">No downloads. Your world is saved locally.</p></div></div>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script>
 (() => {
@@ -177,12 +178,13 @@
     connection.on('close',()=>{if(isHostSide){networkConnections.delete(connection.peer);remotePlayers.delete(connection.peer);broadcastNetwork({type:'playerLeft',id:connection.peer});setNetworkStatus(`${networkConnections.size} player${networkConnections.size===1?'':'s'} connected. Room: ${peer.id}`);}else{hostConnection=null;networkReady=false;setNetworkStatus('Host disconnected. You can keep playing locally.');}});
     connection.on('error',()=>setNetworkStatus('The multiplayer connection encountered an error.'));
   }
-  function startPeer(onOpen){
+  function makeRoomCode(){let chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',code='';for(let i=0;i<6;i++)code+=chars[Math.floor(Math.random()*chars.length)];return code;}
+  function startPeer(onOpen,requestedId){
     if(!window.Peer){setNetworkStatus('Multiplayer could not load. Open the GitHub Pages URL with internet access.');return;}
-    peer=new Peer();peer.on('open',onOpen);peer.on('connection',connection=>{if(networkMode==='host')wireNetworkConnection(connection,true);});peer.on('error',error=>setNetworkStatus(`Multiplayer error: ${error.type||'connection failed'}`));peer.on('disconnected',()=>setNetworkStatus('Multiplayer signaling disconnected. Refresh to reconnect.'));
+    peer=requestedId?new Peer(requestedId):new Peer();peer.on('open',onOpen);peer.on('connection',connection=>{if(networkMode==='host')wireNetworkConnection(connection,true);});peer.on('error',error=>{if(error.type==='unavailable-id'&&networkMode==='host'){peer.destroy();peer=null;startPeer(onOpen,makeRoomCode());return;}setNetworkStatus(`Multiplayer error: ${error.type||'connection failed'}`);});peer.on('disconnected',()=>setNetworkStatus('Multiplayer signaling disconnected. Refresh to reconnect.'));
   }
-  function createRoom(){if(peer)return;playerName=readPlayerName();networkMode='host';networkReady=true;hostRoomButton.disabled=true;joinRoomButton.disabled=true;startPeer(id=>{roomCodeInput.value=id;roomCodeInput.readOnly=true;setNetworkStatus(`Room code: ${id} — share it, then click Single player to enter.`);});}
-  function joinRoom(){if(peer)return;let code=roomCodeInput.value.trim();if(!code){setNetworkStatus('Enter a room code first.');return;}playerName=readPlayerName();networkMode='client';networkReady=false;hostRoomButton.disabled=true;joinRoomButton.disabled=true;startPeer(()=>{hostConnection=peer.connect(code,{reliable:true});wireNetworkConnection(hostConnection,false);});}
+  function createRoom(){if(peer)return;playerName=readPlayerName();networkMode='host';networkReady=true;hostRoomButton.disabled=true;joinRoomButton.disabled=true;startPeer(id=>{roomCodeInput.value=id;roomCodeInput.readOnly=true;setNetworkStatus(`Room code: ${id} — share it, then click Single player to enter.`);},makeRoomCode());}
+  function joinRoom(){if(peer)return;let code=roomCodeInput.value.trim().toUpperCase();roomCodeInput.value=code;if(!code){setNetworkStatus('Enter a room code first.');return;}playerName=readPlayerName();networkMode='client';networkReady=false;hostRoomButton.disabled=true;joinRoomButton.disabled=true;startPeer(()=>{hostConnection=peer.connect(code,{reliable:true});wireNetworkConnection(hostConnection,false);});}
   function networkTick(dt){if(!peer||!networkReady)return;networkClock+=dt;if(networkClock<.1)return;networkClock=0;let message={type:'player',name:playerName,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch};if(networkMode==='host')broadcastNetwork(message);else sendNetwork(hostConnection,message);}
   function renderRemotePlayers(){for(let [id,player] of remotePlayers){let element=remotePlayerElements.get(id);if(!element){element=document.createElement('div');element.className='remote-player';remotePlayerElements.set(id,element);remotePlayersEl.append(element);}let screen=project(player.x,player.y,player.z);if(!screen||screen.d<=.1||screen.d>32){element.style.display='none';continue;}element.style.display='block';element.style.left=`${screen.x}px`;element.style.top=`${screen.y}px`;element.textContent=player.name;}for(let [id,element] of remotePlayerElements)if(!remotePlayers.has(id)){element.remove();remotePlayerElements.delete(id);}}
   hostRoomButton.onclick=createRoom;joinRoomButton.onclick=joinRoom;
